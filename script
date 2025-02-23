@@ -1,0 +1,209 @@
+loadstring(game:HttpGet('https://raw.githubusercontent.com/drillygzzly/Roblox-UI-Libs/main/Yun%20V2%20Lib/Yun%20V2%20Lib%20Source.lua'))()
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Drawing = Drawing or loadstring(game:HttpGet("https://raw.githubusercontent.com/robloxscripts/Drawing-Library/main/source.lua"))()
+
+local Library = initLibrary()
+local Window = Library:Load({name = "xan", sizeX = 425, sizeY = 512, color = Color3.fromRGB(255, 255, 255)})
+
+local Tab = Window:Tab("Aiming")
+local Tab2 = Window:Tab("Visuals")
+
+local Aimingsec1 = Tab:Section{name = "Aim Assist", column = 1}
+local Aimingsec2 = Tab:Section{name = "Silent Aimbot", column = 2}
+local Visualssec1 = Tab2:Section{name = "Wallhacks", column = 1}
+local Visualssec2 = Tab2:Section{name = "Tracers", column = 2}
+
+-- Zmienne dla Aimbota
+local aimAssistEnabled = false
+local aimSmoothing = 0
+local aimPart = "Head"
+
+-- Zmienne dla Silent Aim
+local silentAimEnabled = false
+
+-- Zmienne dla ESP i Tracers
+local espEnabled = false
+local tracersEnabled = false
+local tracers = {}
+
+-- Funkcja do znalezienia najbliższego wroga
+local function getClosestPlayer()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local targetPos = Camera:WorldToViewportPoint(player.Character[aimPart].Position)
+            local distance = (Vector2.new(Mouse.X, Mouse.Y) - Vector2.new(targetPos.X, targetPos.Y)).magnitude
+
+            if distance < shortestDistance then
+                closestPlayer = player
+                shortestDistance = distance
+            end
+        end
+    end
+    return closestPlayer
+end
+
+-- Aim Assist
+RunService.RenderStepped:Connect(function()
+    if aimAssistEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        local closestPlayer = getClosestPlayer()
+        if closestPlayer then
+            local targetPos = Camera:WorldToViewportPoint(closestPlayer.Character[aimPart].Position)
+            Mousemoverel((targetPos.X - Mouse.X) / aimSmoothing, (targetPos.Y - Mouse.Y) / aimSmoothing)
+        end
+    end
+end)
+
+-- Silent Aimbot Hook
+local mt = getrawmetatable(game)
+setreadonly(mt, false)
+local oldIndex = mt.__index
+
+mt.__index = function(self, key)
+    if silentAimEnabled and key == "Hit" then
+        local closestPlayer = getClosestPlayer()
+        if closestPlayer then
+            return closestPlayer.Character[aimPart].Position
+        end
+    end
+    return oldIndex(self, key)
+end
+
+-- Tworzenie ESP
+local function createESP(player)
+    if player == LocalPlayer then return end
+    if not player.Character then return end
+
+    local box = Drawing.new("Square")
+    box.Visible = false
+    box.Color = Color3.fromRGB(255, 0, 0)
+    box.Thickness = 1
+    box.Filled = false
+
+    local tracer = Drawing.new("Line")
+    tracer.Visible = false
+    tracer.Color = Color3.fromRGB(0, 255, 0)
+    tracer.Thickness = 1
+
+    tracers[player] = {box = box, tracer = tracer}
+end
+
+-- Aktualizacja ESP i Tracers
+RunService.RenderStepped:Connect(function()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local character = player.Character
+            local rootPart = character.HumanoidRootPart
+            local head = character:FindFirstChild("Head")
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+            if head and humanoid and rootPart then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+                local headScreenPos = Camera:WorldToViewportPoint(head.Position)
+
+                local espBox = tracers[player] and tracers[player].box
+                local tracerLine = tracers[player] and tracers[player].tracer
+
+                if espBox and tracerLine then
+                    if onScreen and espEnabled then
+                        espBox.Size = Vector2.new(50, 100 / (screenPos.Z / 5))
+                        espBox.Position = Vector2.new(screenPos.X - espBox.Size.X / 2, screenPos.Y - espBox.Size.Y / 2)
+                        espBox.Visible = true
+                    else
+                        espBox.Visible = false
+                    end
+
+                    if onScreen and tracersEnabled then
+                        tracerLine.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y - 50)
+                        tracerLine.To = Vector2.new(screenPos.X, screenPos.Y)
+                        tracerLine.Visible = true
+                    else
+                        tracerLine.Visible = false
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Czyszczenie ESP po opuszczeniu gry
+Players.PlayerRemoving:Connect(function(player)
+    if tracers[player] then
+        tracers[player].box:Remove()
+        tracers[player].tracer:Remove()
+        tracers[player] = nil
+    end
+end)
+
+-- Dodawanie ESP dla nowych graczy
+Players.PlayerAdded:Connect(function(player)
+    wait(1) -- Czekamy, aż postać się załaduje
+    createESP(player)
+end)
+
+-- Tworzenie ESP dla obecnych graczy
+for _, player in pairs(Players:GetPlayers()) do
+    createESP(player)
+end
+
+-- UI Elementy
+Aimingsec1:Toggle {
+    Name = "Enabled",
+    flag = "aimassist_enabled", 
+    callback = function(bool)
+        aimAssistEnabled = bool
+    end
+}
+
+Aimingsec1:Slider {
+    Name = "Smoothing",
+    Default = 5,
+    Min = 1,
+    Max = 30,
+    Decimals = 1,
+    Flag = "aim_smoothing",
+    callback = function(value)
+        aimSmoothing = value
+    end
+}
+
+Aimingsec1:dropdown {
+    name = "Aim Part",
+    content = {"Head", "Torso", "HumanoidRootPart", "Right Arm", "Left Arm"},
+    multichoice = false,
+    callback = function(selected)
+        aimPart = selected
+    end
+}
+
+Aimingsec2:Toggle {
+    Name = "Enabled",
+    flag = "silentaim_enabled", 
+    callback = function(bool)
+        silentAimEnabled = bool
+    end
+}
+
+Visualssec1:Toggle {
+    Name = "ESP Enabled",
+    flag = "esp_enabled", 
+    callback = function(bool)
+        espEnabled = bool
+    end
+}
+
+Visualssec2:Toggle {
+    Name = "Tracers Enabled",
+    flag = "tracers_enabled", 
+    callback = function(bool)
+        tracersEnabled = bool
+    end
+}
